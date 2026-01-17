@@ -339,6 +339,7 @@ class SchedulerBot:
         r.message.register(self.on_time, S.time, F.chat.type == ChatType.PRIVATE)
         r.message.register(self.on_url_btn, S.url_btn, F.chat.type == ChatType.PRIVATE)
         r.message.register(self.on_template_name, S.template_name, F.chat.type == ChatType.PRIVATE)
+        r.message.register(self.on_template_content, S.template_content, F.chat.type == ChatType.PRIVATE)
         r.message.register(self.on_import_file, S.import_file, F.chat.type == ChatType.PRIVATE)
         r.callback_query.register(self.on_callback)
 
@@ -672,10 +673,18 @@ class SchedulerBot:
                                        data.get("has_participate",0), data.get("button_text","Участвовать"),
                                        json.dumps(data.get("url_buttons",[])))
             await msg.answer(f"💾 Шаблон «{name}» сохранён!", reply_markup=main_kb(), parse_mode=ParseMode.HTML)
-        else:  # Creating new template
+            await state.clear()
+        else:  # Creating new template - ask for content
             await state.update_data(template_name=name)
             await msg.answer("📝 <b>Введите текст шаблона:</b>", parse_mode=ParseMode.HTML)
             await state.set_state(S.template_content)
+
+    async def on_template_content(self, msg: Message, state: FSMContext):
+        data = await state.get_data()
+        name = data.get("template_name", "Без имени")
+        content = msg.text or ""
+        await self.db.add_template(msg.from_user.id, name, content)
+        await msg.answer(f"💾 Шаблон «{name}» сохранён!", reply_markup=main_kb(), parse_mode=ParseMode.HTML)
         await state.clear()
 
     async def on_import_file(self, msg: Message, state: FSMContext):
