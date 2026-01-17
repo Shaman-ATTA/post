@@ -157,9 +157,12 @@ def btn(text, cb): return InlineKeyboardButton(text=text, callback_data=cb)
 def url_btn(text, url): return InlineKeyboardButton(text=text, url=url)
 
 def main_kb():
-    return kb([[btn("📋 Чаты", "chats")], [btn("📝 Создать пост", "new_post")], [btn("📊 Посты", "posts")],
-               [btn("📅 Контент-план", "plan")], [btn("📑 Шаблоны", "templates")],
-               [btn("📤 Экспорт / 📥 Импорт", "export_import")], [btn("🌐 Веб-панель", "web_panel")], [btn("⚙️ Настройки", "settings")]])
+    rows = [[btn("📋 Чаты", "chats")], [btn("📝 Создать пост", "new_post")], [btn("📊 Посты", "posts")],
+            [btn("📅 Контент-план", "plan")], [btn("📑 Шаблоны", "templates")],
+            [btn("📤 Экспорт / 📥 Импорт", "export_import")]]
+    if os.getenv("WEB_PORT"): rows.append([btn("🌐 Веб-панель", "web_panel")])
+    rows.append([btn("⚙️ Настройки", "settings")])
+    return kb(rows)
 
 def back_btn(cb="main"): return [btn("🔙 Назад", cb)]
 
@@ -895,13 +898,17 @@ class SchedulerBot:
         await self.db.init()
         self.scheduler.start()
         await self._load_jobs()
-        # Start web server
-        runner = web.AppRunner(self.web.app)
-        await runner.setup()
-        port = int(os.getenv("WEB_PORT", "8080"))
-        site = web.TCPSite(runner, '0.0.0.0', port)
-        await site.start()
-        logger.info(f"Web panel: http://localhost:{port}")
+        # Start web server only if WEB_PORT is set
+        port = os.getenv("WEB_PORT")
+        if port:
+            try:
+                runner = web.AppRunner(self.web.app)
+                await runner.setup()
+                site = web.TCPSite(runner, '0.0.0.0', int(port))
+                await site.start()
+                logger.info(f"Web panel: http://localhost:{port}")
+            except OSError as e:
+                logger.warning(f"Web panel disabled: port {port} busy")
         logger.info("Bot started")
         await self.dp.start_polling(self.bot)
 
