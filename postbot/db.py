@@ -68,7 +68,18 @@ class Database:
                     button_text TEXT DEFAULT 'Участвовать',
                     url_buttons TEXT DEFAULT '[]', 
                     sent_message_id INTEGER, 
-                    template_name TEXT
+                    template_name TEXT,
+                    reaction_buttons TEXT DEFAULT '[]'
+                );
+                
+                CREATE TABLE IF NOT EXISTS reactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    post_id INTEGER,
+                    button_id TEXT,
+                    user_id INTEGER,
+                    username TEXT,
+                    reacted_at TEXT,
+                    UNIQUE(post_id, button_id, user_id)
                 );
                 
                 CREATE TABLE IF NOT EXISTS templates (
@@ -122,6 +133,7 @@ class Database:
             # Run migrations
             migrations = [
                 ("scheduled_posts", "day_of_month INTEGER"),
+                ("scheduled_posts", "reaction_buttons TEXT DEFAULT '[]'"),
                 ("users", "web_token TEXT"),
             ]
             for table, column in migrations:
@@ -129,6 +141,17 @@ class Database:
                     await db.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
                 except:
                     pass
+            
+            # Create reactions table if not exists
+            await db.execute('''CREATE TABLE IF NOT EXISTS reactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER,
+                button_id TEXT,
+                user_id INTEGER,
+                username TEXT,
+                reacted_at TEXT,
+                UNIQUE(post_id, button_id, user_id)
+            )''')
             await db.commit()
         
         # Initialize connection pool
@@ -228,14 +251,15 @@ class Database:
                 INSERT INTO scheduled_posts (
                     chat_id, owner_id, content, media_type, media_file_id, schedule_type, 
                     scheduled_time, scheduled_date, days_of_week, day_of_month, created_at, 
-                    pin_post, has_spoiler, has_participate_button, button_text, url_buttons, template_name
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    pin_post, has_spoiler, has_participate_button, button_text, url_buttons, 
+                    template_name, reaction_buttons
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (kw['chat_id'], kw['owner_id'], kw.get('content', ''), kw.get('media_type'),
                  kw.get('media_file_id'), kw.get('schedule_type'), kw.get('scheduled_time', ''),
                  kw.get('scheduled_date'), kw.get('days_of_week'), kw.get('day_of_month'),
                  datetime.now().isoformat(), kw.get('pin_post', 0), kw.get('has_spoiler', 0),
                  kw.get('has_participate', 0), kw.get('button_text', 'Участвовать'),
-                 kw.get('url_buttons', '[]'), kw.get('template_name'))
+                 kw.get('url_buttons', '[]'), kw.get('template_name'), kw.get('reaction_buttons', '[]'))
             )
             await db.commit()
             return cur.lastrowid
@@ -408,6 +432,60 @@ class Database:
                 (pid, datetime.now().isoformat(), cid, mid, int(success), error)
             )
             await db.commit()
+
+    # ==================== Reactions ====================
+    async def add_reaction(self, pid: int, button_id: str, uid: int, uname: str) -> bool:
+        """Add user reaction to a button. Returns True if new, False if already exists."""
+        try:
+            async with self.get_conn() as db:
+                await db.execute(
+                    "INSERT INTO reactions (post_id, button_id, user_id, username, reacted_at) VALUES (?,?,?,?,?)",
+                    (pid, button_id, uid, uname, datetime.now().isoformat())
+                )
+                await db.commit()
+                return True
+        except:
+            return False
+
+    async def remove_reaction(self, pid: int, button_id: str, uid: int) -> bool:
+        """Remove user reaction from a button."""
+        async with self.get_conn() as db:
+            cur = await db.execute(
+                "DELETE FROM reactions WHERE post_id=? AND button_id=? AND user_id=?",
+                (pid, button_id, uid)
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
+    async def get_user_reaction(self, pid: int, uid: int) -> Optional[str]:
+        """Get button_id user reacted to (if any)."""
+        async with self.get_conn() as db:
+            cur = await db.execute(
+                "SELECT button_id FROM reactions WHERE post_id=? AND user_id=?",
+                (pid, uid)
+            )
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+    async def count_reactions(self, pid: int, button_id: str) -> int:
+        """Count reactions for a specific button."""
+        async with self.get_conn() as db:
+            cur = await db.execute(
+                "SELECT COUNT(*) FROM reactions WHERE post_id=? AND button_id=?",
+                (pid, button_id)
+            )
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+    async def get_all_reaction_counts(self, pid: int) -> dict:
+        """Get all reaction counts for a post as {button_id: count}."""
+        async with self.get_conn() as db:
+            cur = await db.execute(
+                "SELECT button_id, COUNT(*) FROM reactions WHERE post_id=? GROUP BY button_id",
+                (pid,)
+            )
+            rows = await cur.fetchall()
+            return {row[0]: row[1] for row in rows}
 
     # ==================== Export/Import ====================
     async def export_posts(self, uid: int) -> List[dict]:

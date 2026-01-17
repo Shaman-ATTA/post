@@ -59,7 +59,7 @@ class Database:
                 try: await db.execute(f"ALTER TABLE {'scheduled_posts' if 'template' in col else 'users'} ADD COLUMN {col}")
                 except: pass
             await db.commit()
-
+    
     async def _exec(self, sql, params=()): 
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute(sql, params)
@@ -134,7 +134,7 @@ class Database:
     async def add_participant(self, pid, uid, uname):
         try:
             await self._exec("INSERT INTO participants VALUES (NULL,?,?,?,?)", (pid, uid, uname, datetime.now().isoformat()))
-            return True
+                return True
         except: return False
     async def count_participants(self, pid): return (await self._one("SELECT COUNT(*) FROM participants WHERE post_id=?", (pid,)) or (0,))[0]
 
@@ -614,7 +614,7 @@ class SchedulerBot:
                 markup = post_kb(pid, post[16], post[17], json.loads(post[18]) if post[18] else [], count)
                 try: await self.safe_edit(cb.message, None, markup)
                 except: pass
-        else:
+            else:
             await cb.answer()
 
     # Message handlers
@@ -648,7 +648,7 @@ class SchedulerBot:
         if data.get("next_step") == "days":
             await state.update_data(selected_days=[])
             await msg.answer(f"⏰ {times[0]}\n\n📅 <b>Дни:</b>", reply_markup=self._days_picker([]), parse_mode=ParseMode.HTML)
-        else:
+            else:
             sent = await msg.answer("⏳")
             await self._show_settings(sent, state)
 
@@ -766,7 +766,7 @@ class SchedulerBot:
             sel.sort()
             await state.update_data(selected_times=sel)
             await self.safe_edit(cb.message, f"⏰ <b>Выбрано:</b> {', '.join(sel) or 'нет'}", self._time_picker(True, sel))
-        else:
+            else:
             await state.update_data(scheduled_time=t)
             if data.get("next_step") == "days":
                 await state.update_data(selected_days=[])
@@ -869,7 +869,7 @@ class SchedulerBot:
                 except: pass
             if post[6] == "once": await self.db.update_post(pid, is_active=0)
             return sent
-        except Exception as e:
+                except Exception as e:
             logger.error(f"Execute {pid}: {e}")
             await self.db.update_stats(uid, failed=1)
             return None
@@ -926,7 +926,7 @@ async def main():
     token = os.getenv("BOT_TOKEN")
     if not token:
         logger.error("BOT_TOKEN not found")
-        return
+            return
     await SchedulerBot(token).run()
 
 

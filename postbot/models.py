@@ -28,6 +28,14 @@ class UrlButton:
 
 
 @dataclass
+class ReactionButton:
+    """Button for voting/reactions (👍, 👎, За, Против, etc.)"""
+    id: str  # unique id for this button
+    text: str  # display text with emoji
+    count: int = 0
+
+
+@dataclass
 class Post:
     post_id: int
     chat_id: int
@@ -51,6 +59,7 @@ class Post:
     url_buttons: List[UrlButton] = field(default_factory=list)
     sent_message_id: Optional[int] = None
     template_name: Optional[str] = None
+    reaction_buttons: List[ReactionButton] = field(default_factory=list)
 
     @classmethod
     def from_row(cls, row: tuple) -> "Post":
@@ -62,6 +71,12 @@ class Post:
                 url_btns = [UrlButton(**b) for b in json.loads(row[19])]
             except:
                 pass
+        reaction_btns = []
+        if len(row) > 22 and row[22]:
+            try:
+                reaction_btns = [ReactionButton(**b) for b in json.loads(row[22])]
+            except:
+                pass
         return cls(
             post_id=row[0], chat_id=row[1], owner_id=row[2], content=row[3] or "",
             media_type=row[4], media_file_id=row[5], schedule_type=row[6] or "once",
@@ -70,11 +85,14 @@ class Post:
             last_sent_at=row[13], execution_count=row[14] or 0, pin_post=bool(row[15]),
             has_spoiler=bool(row[16]), has_participate_button=bool(row[17]),
             button_text=row[18] or "Участвовать", url_buttons=url_btns,
-            sent_message_id=row[20], template_name=row[21]
+            sent_message_id=row[20], template_name=row[21], reaction_buttons=reaction_btns
         )
 
     def url_buttons_json(self) -> str:
         return json.dumps([{"text": b.text, "url": b.url} for b in self.url_buttons])
+
+    def reaction_buttons_json(self) -> str:
+        return json.dumps([{"id": b.id, "text": b.text, "count": b.count} for b in self.reaction_buttons])
 
 
 @dataclass

@@ -35,7 +35,7 @@ def register_template_handlers(router: Router, db: Database, bot: Bot):
         await safe_edit(cb.message, "📑 <b>Введите название шаблона:</b>")
         await state.set_state(S.template_name)
 
-    @router.message(S.template_name)
+    @router.message(S.template_name, F.chat.type == ChatType.PRIVATE)
     async def on_template_name(msg: Message, state: FSMContext):
         name = msg.text.strip()
         data = await state.get_data()
@@ -57,7 +57,7 @@ def register_template_handlers(router: Router, db: Database, bot: Bot):
             await msg.answer("📝 <b>Введите текст шаблона:</b>", parse_mode=ParseMode.HTML)
             await state.set_state(S.template_content)
 
-    @router.message(S.template_content)
+    @router.message(S.template_content, F.chat.type == ChatType.PRIVATE)
     async def on_template_content(msg: Message, state: FSMContext):
         data = await state.get_data()
         name = data.get("template_name", "Без имени")

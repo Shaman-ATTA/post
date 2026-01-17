@@ -17,6 +17,9 @@ class PostStates(StatesGroup):
     edit_url = State()
     add_media = State()
     
+    # Reaction buttons
+    add_reaction = State()
+    
     # Templates
     template_name = State()
     template_content = State()

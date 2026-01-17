@@ -77,11 +77,9 @@ class SchedulerBot:
 
     async def _load_jobs(self):
         """Load scheduled jobs from database"""
-        from .handlers.posts import _register_job
         active_posts = await self.db.get_active_posts()
         for (pid,) in active_posts:
             try:
-                # We need to call the inner function
                 post = await self.db.get_post(pid)
                 if post and post.is_active:
                     await self._register_single_job(pid)
@@ -145,7 +143,9 @@ class SchedulerBot:
             return False
         
         count = await self.db.count_participants(post.post_id)
-        markup = post_kb(post.post_id, post.has_participate_button, post.button_text, post.url_buttons, count)
+        reaction_counts = await self.db.get_all_reaction_counts(post.post_id)
+        markup = post_kb(post.post_id, post.has_participate_button, post.button_text, 
+                        post.url_buttons, count, post.reaction_buttons, reaction_counts)
         
         try:
             if post.media_type == "text" or not post.media_file_id:

@@ -103,7 +103,7 @@ def register_callback_handlers(router: Router, db: Database, bot: Bot):
                                     "Формат: массив объектов с полями content, schedule_type, scheduled_time и т.д.")
         await state.set_state(S.import_file)
 
-    @router.message(S.import_file)
+    @router.message(S.import_file, F.chat.type == ChatType.PRIVATE)
     async def on_import_file(msg: Message, state: FSMContext):
         if not msg.document:
             return await msg.answer("❌ Отправьте JSON файл")

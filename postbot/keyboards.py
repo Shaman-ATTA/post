@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from .models import Post, Template, Chat, UrlButton
+from .models import Post, Template, Chat, UrlButton, ReactionButton
 
 
 def kb(rows: List[List[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
@@ -53,12 +53,14 @@ def settings_kb(data: dict) -> InlineKeyboardMarkup:
     spoiler = data.get("has_spoiler")
     part = data.get("has_participate")
     media = data.get("content_type") in ("photo", "video") or data.get("media_file_id")
+    reaction_btns = data.get("reaction_buttons", [])
     
     rows = [[btn(f"{'✅' if pin else '⬜'} Закрепить", "toggle_pin")]]
     if media:
         rows.append([btn(f"{'✅' if spoiler else '⬜'} Спойлер", "toggle_spoiler")])
     rows.append([btn(f"{'✅' if part else '⬜'} Участвовать", "toggle_participate")])
     rows.append([btn(f"🔗 URL кнопки ({len(data.get('url_buttons', []))})", "url_buttons")])
+    rows.append([btn(f"🗳 Кнопки реакций ({len(reaction_btns)})", "reaction_buttons")])
     if not media:
         rows.append([btn("🖼 Добавить медиа", "add_media")])
     rows.append([btn("📑 Из шаблона", "from_template")])
@@ -69,11 +71,26 @@ def settings_kb(data: dict) -> InlineKeyboardMarkup:
 
 
 def post_kb(post_id: int, has_participate: bool, button_text: str, 
-            url_buttons: List[UrlButton], participant_count: int) -> Optional[InlineKeyboardMarkup]:
+            url_buttons: List[UrlButton], participant_count: int,
+            reaction_buttons: List[ReactionButton] = None,
+            reaction_counts: dict = None) -> Optional[InlineKeyboardMarkup]:
+    """Build post keyboard with URL buttons, participate button, and reaction buttons."""
     rows = []
+    # URL buttons
     for b in url_buttons:
         if b.text and b.url:
             rows.append([url_btn(b.text, b.url)])
+    # Reaction buttons in a row
+    if reaction_buttons:
+        counts = reaction_counts or {}
+        reaction_row = []
+        for rb in reaction_buttons:
+            count = counts.get(rb.id, 0)
+            text = f"{rb.text} ({count})" if count > 0 else rb.text
+            reaction_row.append(btn(text, f"react_{post_id}_{rb.id}"))
+        if reaction_row:
+            rows.append(reaction_row)
+    # Participate button
     if has_participate:
         rows.append([btn(f"{button_text} ({participant_count})", f"part_{post_id}")])
     return kb(rows) if rows else None
@@ -192,6 +209,29 @@ def confirm_kb(action: str) -> InlineKeyboardMarkup:
     return kb([
         [btn("✅ Да, подтверждаю", f"confirm_{action}")],
         [btn("❌ Отмена", "cancel")]
+    ])
+
+
+def reaction_buttons_kb(buttons: list, back_cb: str = "back_settings") -> InlineKeyboardMarkup:
+    """Keyboard for managing reaction buttons."""
+    rows = []
+    for i, b in enumerate(buttons):
+        rows.append([btn(f"🗑 {b.get('text', b.get('id', '?'))}", f"rm_react_{i}")])
+    rows.append([btn("➕ Добавить свою", "add_react_custom")])
+    rows.append([btn("📦 Готовые наборы", "react_presets")])
+    rows.append(back_btn(back_cb))
+    return kb(rows)
+
+
+def reaction_presets_kb() -> InlineKeyboardMarkup:
+    """Preset reaction button sets."""
+    return kb([
+        [btn("👍 / 👎", "preset_thumbs")],
+        [btn("✅ За / ❌ Против", "preset_vote")],
+        [btn("❤️ / 😂 / 😮 / 😢 / 😡", "preset_emotions")],
+        [btn("🔥 / 💯 / 👏", "preset_fire")],
+        [btn("1️⃣ / 2️⃣ / 3️⃣ / 4️⃣ / 5️⃣", "preset_numbers")],
+        back_btn("reaction_buttons")
     ])
 
 

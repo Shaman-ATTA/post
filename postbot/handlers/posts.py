@@ -16,7 +16,7 @@ from ..keyboards import (
     kb, btn, back_btn, main_kb, schedule_kb, settings_kb, post_kb,
     post_manage_kb, post_edit_kb, posts_filter_kb, pagination_kb,
     calendar_kb, time_picker_kb, days_picker_kb, monthly_day_picker_kb,
-    chats_select_kb, confirm_kb
+    chats_select_kb, confirm_kb, reaction_buttons_kb, reaction_presets_kb
 )
 
 logger = logging.getLogger(__name__)
@@ -267,7 +267,7 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         await safe_edit(cb.message, "✍️ <b>Введите новый текст:</b>")
         await state.set_state(S.edit_content)
 
-    @router.message(S.edit_content)
+    @router.message(S.edit_content, F.chat.type == ChatType.PRIVATE)
     async def on_edit_content(msg: Message, state: FSMContext):
         data = await state.get_data()
         pid = data.get("editing_post_id")
@@ -283,7 +283,7 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         await safe_edit(cb.message, "🖼 <b>Отправьте новое фото/видео:</b>")
         await state.set_state(S.edit_media)
 
-    @router.message(S.edit_media)
+    @router.message(S.edit_media, F.chat.type == ChatType.PRIVATE)
     async def on_edit_media(msg: Message, state: FSMContext):
         data = await state.get_data()
         pid = data.get("editing_post_id")
@@ -309,7 +309,7 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         await safe_edit(cb.message, "⏰ <b>Введите новое время (HH:MM):</b>")
         await state.set_state(S.edit_time)
 
-    @router.message(S.edit_time)
+    @router.message(S.edit_time, F.chat.type == ChatType.PRIVATE)
     async def on_edit_time(msg: Message, state: FSMContext):
         data = await state.get_data()
         pid = data.get("editing_post_id")
@@ -427,12 +427,12 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
             await safe_edit(cb.message, f"📎 <b>Отправьте {media_names.get(t, 'медиа')}:</b>")
             await state.set_state(S.media)
 
-    @router.message(S.content)
+    @router.message(S.content, F.chat.type == ChatType.PRIVATE)
     async def on_content(msg: Message, state: FSMContext):
         await state.update_data(content=msg.text or msg.caption or "")
         await msg.answer("⏱ <b>Когда опубликовать?</b>", reply_markup=schedule_kb(), parse_mode=ParseMode.HTML)
 
-    @router.message(S.media)
+    @router.message(S.media, F.chat.type == ChatType.PRIVATE)
     async def on_media(msg: Message, state: FSMContext):
         fid, mt = None, None
         if msg.photo:
@@ -520,7 +520,7 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         await safe_edit(cb.message, "⏰ <b>Введите время (HH:MM):</b>\n💡 Можно несколько через Enter")
         await state.set_state(S.time)
 
-    @router.message(S.time)
+    @router.message(S.time, F.chat.type == ChatType.PRIVATE)
     async def on_time_input(msg: Message, state: FSMContext):
         data = await state.get_data()
         times = []
@@ -633,7 +633,7 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         await safe_edit(cb.message, "🔗 <b>Формат:</b>\n<code>Текст | https://url</code>")
         await state.set_state(S.url_btn)
 
-    @router.message(S.url_btn)
+    @router.message(S.url_btn, F.chat.type == ChatType.PRIVATE)
     async def on_url_btn(msg: Message, state: FSMContext):
         try:
             t, u = [p.strip() for p in msg.text.split("|")]
@@ -664,12 +664,62 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
     async def cb_back_settings(cb: CallbackQuery, state: FSMContext):
         await _show_settings(cb.message, state, safe_edit)
 
+    # ==================== Reaction Buttons ====================
+
+    @router.callback_query(F.data == "reaction_buttons")
+    async def cb_reaction_buttons(cb: CallbackQuery, state: FSMContext):
+        data = await state.get_data()
+        btns = data.get("reaction_buttons", [])
+        await safe_edit(cb.message, "🗳 <b>Кнопки реакций</b>\n\nДобавьте кнопки для голосования:", 
+                       reaction_buttons_kb(btns))
+
+    @router.callback_query(F.data == "add_react_custom")
+    async def cb_add_react_custom(cb: CallbackQuery, state: FSMContext):
+        await safe_edit(cb.message, 
+            "🗳 <b>Введите текст кнопки</b>\n\n"
+            "Примеры:\n"
+            "<code>👍</code>\n"
+            "<code>✅ За</code>\n"
+            "<code>❌ Против</code>")
+        await state.set_state(S.add_reaction)
+
+    @router.callback_query(F.data == "react_presets")
+    async def cb_react_presets(cb: CallbackQuery):
+        await safe_edit(cb.message, "📦 <b>Готовые наборы кнопок:</b>", reaction_presets_kb())
+
+    @router.callback_query(F.data.startswith("preset_"))
+    async def cb_preset(cb: CallbackQuery, state: FSMContext):
+        preset = cb.data.split("_")[1]
+        presets = {
+            "thumbs": [{"id": "like", "text": "👍"}, {"id": "dislike", "text": "👎"}],
+            "vote": [{"id": "yes", "text": "✅ За"}, {"id": "no", "text": "❌ Против"}],
+            "emotions": [{"id": "love", "text": "❤️"}, {"id": "laugh", "text": "😂"}, 
+                        {"id": "wow", "text": "😮"}, {"id": "sad", "text": "😢"}, {"id": "angry", "text": "😡"}],
+            "fire": [{"id": "fire", "text": "🔥"}, {"id": "100", "text": "💯"}, {"id": "clap", "text": "👏"}],
+            "numbers": [{"id": "1", "text": "1️⃣"}, {"id": "2", "text": "2️⃣"}, {"id": "3", "text": "3️⃣"}, 
+                       {"id": "4", "text": "4️⃣"}, {"id": "5", "text": "5️⃣"}]
+        }
+        btns = presets.get(preset, [])
+        await state.update_data(reaction_buttons=btns)
+        await cb.answer(f"✅ Добавлено {len(btns)} кнопок")
+        await _show_settings(cb.message, state, safe_edit)
+
+    @router.callback_query(F.data.startswith("rm_react_"))
+    async def cb_rm_react(cb: CallbackQuery, state: FSMContext):
+        i = int(cb.data.split("_")[2])
+        data = await state.get_data()
+        btns = data.get("reaction_buttons", [])
+        if 0 <= i < len(btns):
+            btns.pop(i)
+        await state.update_data(reaction_buttons=btns)
+        await safe_edit(cb.message, "🗳 <b>Кнопки реакций:</b>", reaction_buttons_kb(btns))
+
     @router.callback_query(F.data == "add_media")
     async def cb_add_media(cb: CallbackQuery, state: FSMContext):
         await safe_edit(cb.message, "🖼 <b>Отправьте фото/видео:</b>")
         await state.set_state(S.add_media)
 
-    @router.message(S.add_media)
+    @router.message(S.add_media, F.chat.type == ChatType.PRIVATE)
     async def on_add_media(msg: Message, state: FSMContext):
         fid, mt = None, None
         if msg.photo:
@@ -682,6 +732,21 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
             await _show_settings(sent, state, safe_edit)
         else:
             await msg.answer("❌ Отправьте фото или видео")
+
+    @router.message(S.add_reaction, F.chat.type == ChatType.PRIVATE)
+    async def on_add_reaction(msg: Message, state: FSMContext):
+        text = msg.text.strip()
+        if not text:
+            return await msg.answer("❌ Введите текст кнопки")
+        # Generate unique id
+        import hashlib
+        btn_id = hashlib.md5(text.encode()).hexdigest()[:8]
+        data = await state.get_data()
+        btns = data.get("reaction_buttons", [])
+        btns.append({"id": btn_id, "text": text})
+        await state.update_data(reaction_buttons=btns)
+        sent = await msg.answer(f"✅ Кнопка «{text}» добавлена")
+        await _show_settings(sent, state, safe_edit)
 
     @router.callback_query(F.data == "preview")
     async def cb_preview(cb: CallbackQuery, state: FSMContext):
@@ -713,18 +778,60 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         else:
             await cb.answer("Вы уже участвуете!", show_alert=True)
         # Update button count
+        await _update_post_buttons(cb, pid, db, safe_edit)
+
+    # ==================== Reaction Buttons (in published post) ====================
+
+    @router.callback_query(F.data.startswith("react_"))
+    async def cb_react(cb: CallbackQuery):
+        """Handle reaction button click in published post."""
+        parts = cb.data.split("_")
+        pid = int(parts[1])
+        button_id = parts[2]
+        uid = cb.from_user.id
+        uname = cb.from_user.username or cb.from_user.first_name
+        
+        # Check if user already reacted to this post
+        existing = await db.get_user_reaction(pid, uid)
+        
+        if existing == button_id:
+            # Toggle off - remove reaction
+            await db.remove_reaction(pid, button_id, uid)
+            await cb.answer("❌ Голос отменён")
+        elif existing:
+            # Change vote - remove old, add new
+            await db.remove_reaction(pid, existing, uid)
+            await db.add_reaction(pid, button_id, uid, uname)
+            await cb.answer("✅ Голос изменён!")
+        else:
+            # New vote
+            await db.add_reaction(pid, button_id, uid, uname)
+            count = await db.count_reactions(pid, button_id)
+            await cb.answer(f"✅ Голос принят! ({count})")
+        
+        # Update buttons
+        await _update_post_buttons(cb, pid, db, safe_edit)
+
+    async def _update_post_buttons(cb: CallbackQuery, pid: int, db: Database, safe_edit):
+        """Update post buttons after vote/participation."""
         post = await db.get_post(pid)
-        if post:
-            url_btns = [UrlButton(**b) for b in json.loads(post.url_buttons_json())]
-            markup = post_kb(pid, post.has_participate_button, post.button_text, url_btns, count)
-            try:
-                await safe_edit(cb.message, None, markup)
-            except:
-                pass
+        if not post:
+            return
+        part_count = await db.count_participants(pid)
+        reaction_counts = await db.get_all_reaction_counts(pid)
+        markup = post_kb(
+            pid, post.has_participate_button, post.button_text, 
+            post.url_buttons, part_count, post.reaction_buttons, reaction_counts
+        )
+        try:
+            await safe_edit(cb.message, None, markup)
+        except:
+            pass
 
     # ==================== Helpers ====================
 
     async def _send_state_preview(uid: int, state: FSMContext, bot: Bot):
+        from ..models import ReactionButton
         data = await state.get_data()
         content = data.get("content", "")
         mt = data.get("content_type", "text")
@@ -732,7 +839,8 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
         spoiler = data.get("has_spoiler")
         part = data.get("has_participate")
         url_btns = [UrlButton(**b) for b in data.get("url_buttons", [])]
-        markup = post_kb(0, part, data.get("button_text", "Участвовать"), url_btns, 0)
+        reaction_btns = [ReactionButton(**b) for b in data.get("reaction_buttons", [])]
+        markup = post_kb(0, part, data.get("button_text", "Участвовать"), url_btns, 0, reaction_btns, {})
         try:
             if mt == "text" or not fid:
                 await bot.send_message(uid, content or "(пусто)", parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -747,7 +855,9 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
 
     async def _send_post_preview(uid: int, post: Post, db: Database, bot: Bot):
         count = await db.count_participants(post.post_id)
-        markup = post_kb(post.post_id, post.has_participate_button, post.button_text, post.url_buttons, count)
+        reaction_counts = await db.get_all_reaction_counts(post.post_id)
+        markup = post_kb(post.post_id, post.has_participate_button, post.button_text, 
+                        post.url_buttons, count, post.reaction_buttons, reaction_counts)
         try:
             if post.media_type == "text" or not post.media_file_id:
                 await bot.send_message(uid, post.content, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -776,7 +886,8 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
                 day_of_month=data.get("day_of_month"), pin_post=int(data.get("pin_post", 0)),
                 has_spoiler=int(data.get("has_spoiler", 0)), has_participate=int(data.get("has_participate", 0)),
                 button_text=data.get("button_text", "Участвовать"),
-                url_buttons=json.dumps(data.get("url_buttons", [])), template_name=data.get("template_name")
+                url_buttons=json.dumps(data.get("url_buttons", [])), template_name=data.get("template_name"),
+                reaction_buttons=json.dumps(data.get("reaction_buttons", []))
             )
             saved_ids.append(pid)
             await db.update_stats(cb.from_user.id, created=1)
@@ -804,7 +915,8 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
                 has_spoiler=int(data.get("has_spoiler", 0)) if with_settings else 0,
                 has_participate=int(data.get("has_participate", 0)) if with_settings else 0,
                 button_text=data.get("button_text", "Участвовать"),
-                url_buttons=json.dumps(data.get("url_buttons", [])) if with_settings else "[]"
+                url_buttons=json.dumps(data.get("url_buttons", [])) if with_settings else "[]",
+                reaction_buttons=json.dumps(data.get("reaction_buttons", [])) if with_settings else "[]"
             )
             sent = await _execute_post(pid, db, bot, notify_error)
             if sent:
@@ -825,7 +937,9 @@ def register_post_handlers(router: Router, db: Database, bot: Bot, scheduler, no
             return False
         
         count = await db.count_participants(post.post_id)
-        markup = post_kb(post.post_id, post.has_participate_button, post.button_text, post.url_buttons, count)
+        reaction_counts = await db.get_all_reaction_counts(post.post_id)
+        markup = post_kb(post.post_id, post.has_participate_button, post.button_text, 
+                        post.url_buttons, count, post.reaction_buttons, reaction_counts)
         
         try:
             if post.media_type == "text" or not post.media_file_id:
